@@ -1,0 +1,49 @@
+# keycloak-26.2.4-win-docker-desktop
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.4
+    container_name: keycloak
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.190
+    ports:
+      - "8080:8080"
+    restart: always
+    environment:
+      - KEYCLOAK_ADMIN=admin              # 或者 KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KEYCLOAK_ADMIN_PASSWORD=abcd1234  # 或者 KC_BOOTSTRAP_ADMIN_PASSWORD=abcd1234
+      - KC_HTTP_ENABLED: true
+      # 如果 Keycloak 访问系通过 Nginx 反向代理, Proxy Headers 支持 forwarded, xforwarded
+      - KC_PROXY_HEADERS: xforwarded
+      - KC_HEALTH_ENABLED: true
+      # Keycloak Host Name 改为容器的实际 IP (重要)
+      - KC_HOSTNAME=127.0.0.1
+      - KC_PROXY=edge  # 启动代理模式
+      - KC_HOSTNAME_STRICT=false
+      # 数据库类型: mysql, postgresql
+      - KC_DB: mysql
+      - KC_DB_URL: jdbc:mysql://192.168.1.1:3306/keycloak
+      - KC_DB_USERNAME: keycloak
+      - KC_DB_PASSWORD: abcd1234
+    command:
+      - start-dev
+    privileged: true
+
+networks:
+  custom-net:
+    external: true    # Use an existing external network.
+    name: custom-net  # The name of the external network.
+
+# Create Container Network
+# - docker network create --subnet=192.168.1.0/24 --gateway=192.168.1.1 custom-net
+# MySQL 8 Init for Keycloak
+# - mysql> CREATE DATABASE IF NOT EXISTS keycloak;
+# - mysql> CREATE USER "keycloak"@"%" IDENTIFIED WITH mysql_native_password BY "abcd1234";
+# - mysql> GRANT ALL PRIVILEGES ON keycloak.* TO "keycloak"@"%";
+# - mysql> FLUSH PRIVILEGES;
+# 检查 OIDC 发现文档文档是否可访问:
+# - curl http://192.168.1.190:8080/realms/master/.well-known/openid-configuration
+
+# Signed by GF.
+

@@ -1,0 +1,27 @@
+# docker-compose-net-178-onlyoffice-documentserver-8.2.2
+
+services:
+
+  onlyoffice-ds:
+    image: onlyoffice/documentserver:8.2.2
+    container_name: onlyoffice-ds
+    ports:
+      - "6233:80"
+    environment:
+      - JWT_SECRET=aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789AbCdEfGhj
+    volumes:
+      - ./onlyoffice/documentserver/logs:/var/log/onlyoffice
+      - ./onlyoffice/documentserver/data:/var/www/onlyoffice/Data
+      - ./onlyoffice/documentserver/lib:/var/lib/onlyoffice
+      - ./onlyoffice/documentserver/db:/var/lib/postgresql
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.178
+#   privileged: true
+
+networks:
+  custom-net:
+    external: true    # Use an existing external network.
+    name: custom-net  # The name of the external network.
+
+# Signed by GF.

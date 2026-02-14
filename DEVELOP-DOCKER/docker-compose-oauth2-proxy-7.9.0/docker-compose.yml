@@ -1,0 +1,40 @@
+# docker-compose-oauth2-proxy-7.9.0
+
+services:
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.9.0
+    container_name: oauth2-proxy
+    network_mode: "host"  # 共享主机网络
+    ports:
+      - "4180:4180"
+    restart: always
+    environment:
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+      - OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:3000/  # 要代理的 "需要 OSS 单点登录的应用" (URL 地址)
+      - OAUTH2_PROXY_PROVIDER=oidc                     # 支持 oidc, google, gitlab, ...
+      # 如果 OAUTH2_PROXY_PROVIDER 的值为 oidc, 则必须设定 OAUTH2_PROXY_OIDC_ISSUER_URL
+      - OAUTH2_PROXY_OIDC_ISSUER_URL=http://127.0.0.1:8080/realms/master
+      - OAUTH2_PROXY_CLIENT_ID=open-webui
+      - OAUTH2_PROXY_CLIENT_SECRET=DZvTRDTsELSb4nVwnTMSIsUCW6cr5YC5
+      - OAUTH2_PROXY_EMAIL_DOMAINS=*                   # 允许所有邮箱域名
+      - OAUTH2_PROXY_REDIRECT_URL=http://127.0.0.1:4180/oauth2/callback
+      # Cookie Secret 可使用 (openssl rand -hex 16 | tr -d '\n') 生成
+      - OAUTH2_PROXY_COOKIE_SECRET=a3f8c7e12b45d609f4e1c8b72d9f0e5a
+      - OAUTH2_PROXY_COOKIE_SECURE=false
+#     - OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true
+#     - OAUTH2_PROXY_REVERSE_PROXY=true
+      # S256 比 plain 更安全 (使用 SHA256 代替明文), 适用于主流 OIDC 提供商 (Keycloak / Auth0 / Okta 等)
+#     - OAUTH2_PROXY_CODE_CHALLENGE_METHOD=S256
+      # 免登录 / 自动登录:
+      - OAUTH2_PROXY_SKIP_PROVIDER_BUTTON=true         # 自动跳转登录
+      - OAUTH2_PROXY_FORCE_EMAIL=admin@mail.com        # 强制绑定指定邮箱 (覆盖实际认证邮箱)
+      - OAUTH2_PROXY_SET_XAUTHREQUEST=true             # 传递认证头给上游
+      # Keycloak 专用配置:
+#     - OAUTH2_PROXY_OIDC_GROUPS_CLAIM=groups
+#     - OAUTH2_PROXY_OIDC_USER_CLAIM=preferred_username
+      # 其它配置:
+    command:
+      - "--code-challenge-method=S256"
+#   privileged: true                                   # 基于 Windows WSL 的 docker-desktop 需要开启
+
+# Signed by GF.

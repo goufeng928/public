@@ -1,0 +1,296 @@
+# docker-compose-net-195-airflow-3.0.2-celery
+
+services:
+
+  # airflow-webserver (Web 服务器) - 提供用户界面和 API 接口
+  # - 主要功能: 
+  # - * 提供 Web UI 用于监控和管理 DAG、任务等
+  # - * 展示任务执行日志、图表和甘特图
+  # - * 支持手动触发 DAG 运行、重试任务等操作
+  # - * 提供 REST API 接口
+  # - * 用户认证和权限管理 (尤其是启用 RBAC 时) 
+  # - 工作方式: 
+  # - * 作为 Web 应用服务器运行 (通常基于 Flask) 
+  # - * 从元数据库读取数据展示状态
+  # - * 监听 HTTP 请求 (默认端口 8080) 
+  # - 关键特点: 
+  # - * Airflow 的 "用户界面"
+  # - * 无状态设计 (本身不存储任何数据) 
+  # - * 轻量级组件 (相比调度器) 
+  # - * 可通过负载均衡器水平扩展
+  #
+  # airflow-scheduler (调度器) - 任务调度和任务执行管理
+  # - 主要功能: 
+  # - * 持续监控 DAG 文件的变化
+  # - * 根据 DAG 定义的任务依赖关系和时间表 (schedule) 触发任务执行
+  # - * 将任务分配给可用的执行器 (如 LocalExecutor、CeleryExecutor 等) 
+  # - * 监控任务执行状态, 处理重试、超时等逻辑
+  # - * 维护任务状态数据库
+  # - 工作方式: 
+  # - * 作为后台守护进程运行
+  # - * 不断轮询元数据库检查需要执行的任务
+  # - * 使用 有状态 设计, 需要访问元数据库
+  # - 关键特点: 
+  # - * Airflow 的 "大脑", 负责所有调度逻辑
+  # - * 资源密集型组件 (CPU 和内存消耗较大) 
+  # - * 高可用部署时可运行多个实例
+  #
+  # airflow-webserver (Web 服务器) 和 airflow-scheduler (调度器) 协同工作流程
+  # - 调度器 监控 DAG 文件 -> 触发任务执行 -> 更新元数据库
+  # - Web 服务器 从元数据库读取状态 -> 在 UI 上展示实时信息
+  # - 用户通过 Web 服务器 UI 手动操作 -> 操作请求写入元数据库
+  # - 调度器 检测到数据库变化 -> 执行相应操作
+  #
+  # 在 Airflow 的分布式架构中, 组件之间并不需要直接指定对方的 IP 地址来实现通信
+  # 调度器、Web 服务器、DAG 处理器都连接到同一个 MySQL / PostgreSQL / SQLite 数据库
+  # - Airflow 组件间的协同工作主要依靠: 
+  # - * 共享数据库 - 状态同步中枢
+  # - * 共享文件系统 - DAG / 插件分发
+  # - * Docker 网络 DNS - 服务发现
+  # - * 标准化接口 - 健康检查 / API 端点
+  # - 解耦设计: 
+  # - * 组件间不直接通信, 通过数据库中介
+  # - * 符合微服务架构的 "共享数据存储" 模式
+  # - 动态扩展性: 
+  # - * 增加新调度器 / DAG 处理器时无需配置现有组件
+  # - * 所有实例自动从数据库获取最新状态
+  # - 高可用保障: 
+  # - * 组件故障时, 新实例自动接管工作
+  # - * 状态持久化在数据库, 不依赖内存状态
+
+  airflow-redis:
+    image: redis:8.0.2
+    container_name: airflow-redis
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.194
+    privileged: true
+
+  # Airflow Web 服务器
+  airflow-webserver:
+    image: apache/airflow:3.0.2-python3.12
+    container_name: airflow-webserver
+    ports:
+      - "8080:8080"
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.195
+    environment:
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: 'abcdefgh12345678'
+#     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CELERY__BROKER_URL: redis://:@192.168.1.194:6379/0
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:abcd1234@192.168.1.1:3306/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://airflow:abcd1234@192.168.1.1:3306/airflow
+      AIRFLOW__TRIGGERER__DEFAULT_CAPACITY: 1000  # Triggerer 配置: 最大并发触发器数量
+      AIRFLOW__TRIGGERER__HEARTBEAT: 5.0          # Triggerer 配置: 心跳间隔 (秒)
+#     AIRFLOW__WEBSERVER__WORKERS: 1
+      AIRFLOW__WEBSERVER__RBAC: 'true'  # 启用基于角色的访问控制
+      AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: 'admin'
+      _AIRFLOW_WWW_USER_PASSWORD: 'abcd1234'
+      _AIRFLOW_WWW_USER_FIRSTNAME: 'Admin'
+      _AIRFLOW_WWW_USER_LASTNAME: 'User'
+      _AIRFLOW_WWW_USER_EMAIL: 'admin@mail.com'
+      _AIRFLOW_WWW_USER_ROLE: 'Admin'
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config
+      - ./airflow/plugins:/opt/airflow/plugins
+    privileged: true
+    # 对于大多数 Airflow 分布式集群环境, 调度器 (Scheduler) 推荐单机部署 (简单可靠)
+    # - 对于个别需要多调度器的场景, 可使用多调度器高可用 (HA) 模式创建多个实例
+    # - 多调度器高可用 (HA) 模式启动命令: airflow scheduler --ha
+    # 对于大多数 Airflow 分布式集群环境, 触发器 (Triggerer) 推荐单机部署 (减少资源消耗)
+    # - 个别高频处理异步任务的场景, 可复制多个 Triggerer 副本创建实例
+#   command: ["bash", "-c", "airflow db migrate && airflow users create -r Admin -u admin -p abcd1234 -e admin@mail.com -f Admin -l User && airflow api-server"]
+    command: ["bash", "-c", "airflow scheduler & airflow triggerer & airflow api-server"]
+
+  # Airflow DAG 处理器
+  # - Dag Processor 可以部署在 Scheduler 相同的节点 (默认)
+  # - Dag Processor 也可作为独立服务运行
+  # - 所有 Dag Processor 和 Scheduler 必须访问相同的 DAG 存储和元数据库
+  airflow-dag-processor:
+    image: apache/airflow:3.0.2-python3.12
+    container_name: airflow-dag-processor
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.196
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: 'abcdefgh12345678'
+      AIRFLOW__CELERY__BROKER_URL: redis://:@192.168.1.194:6379/0
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:abcd1234@192.168.1.1:3306/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://airflow:abcd1234@192.168.1.1:3306/airflow
+      AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - airflow-webserver
+    privileged: true
+    command: ["bash", "-c", "airflow dag-processor"]
+
+  # Airflow Celery 监控
+  airflow-celery-flower:
+    image: apache/airflow:3.0.2-python3.12
+    container_name: airflow-celery-flower
+    ports:
+      - "5555:5555"
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.197
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: 'abcdefgh12345678'
+      AIRFLOW__CELERY__BROKER_URL: redis://:@192.168.1.194:6379/0
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://airflow:abcd1234@192.168.1.1:3306/airflow
+      AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - airflow-webserver
+      - airflow-dag-processor
+    privileged: true
+    command: ["bash", "-c", "airflow db migrate && airflow celery flower"]
+
+  # Airflow Celery 工作流引擎
+  # - 分布式部署架构示例
+  # -  主节点 (Machine 1)        工作节点 (Machine 2, 3...)
+  # - +------------------+             
+  # - | Web Server       |                +-----------+
+  # - | Scheduler        |                |           |
+  # - | MySQL (元数据库) | <- 网络通信 -> | Worker(s) |
+  # - | Redis (消息队列) |                |           |
+  # - | Flower (监控)    |                +-----------+
+  # - +------------------+
+  airflow-celery-worker:
+    image: apache/airflow:3.0.2-python3.12
+    container_name: airflow-celery-worker
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.198
+    environment:
+      AIRFLOW__API__AUTH_BACKEND: airflow.api.auth.backend.basic_auth
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://192.168.1.1:8080/execution'  # 分布式环境关键配置
+      AIRFLOW__CORE__FERNET_KEY: 'abcdefgh12345678'
+      AIRFLOW__CELERY__BROKER_URL: redis://:@192.168.1.194:6379/0
+      AIRFLOW__CELERY__WORKER_CONCURRENCY: 2  # 根据 CPU 核心数调整
+      AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:abcd1234@192.168.1.1:3306/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://airflow:abcd1234@192.168.1.1:3306/airflow
+      AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config
+      - ./airflow/plugins:/opt/airflow/plugins
+    depends_on:
+      - airflow-webserver
+      - airflow-dag-processor
+      - airflow-celery-flower
+    privileged: true
+    command: ["bash", "-c", "airflow db migrate && airflow celery worker"]
+
+networks:
+  custom-net:
+    external: true    # Use an existing external network.
+    name: custom-net  # The name of the external network.
+
+# Docker Container Network Creation:
+# - docker network create --subnet=192.168.1.0/24 --gateway=192.168.1.1 custom-net
+#
+# MySQL 8 Create Database:
+# - CREATE DATABASE IF NOT EXISTS airflow DEFAULT charset utf8 COLLATE utf8_general_ci;
+#
+# MySQL 8 Create User:
+# - CREATE USER IF NOT EXISTS 'airflow'@'%' IDENTIFIED WITH mysql_native_password BY 'abcd1234';
+#
+# MySQL 8 Grant:
+# - GRANT ALL PRIVILEGES ON airflow.* TO 'airflow'@'%' WITH GRANT OPTION;
+#
+# Airflow 3.0.2 环境变量
+# - AIRFLOW__CORE__DAG_DISCOVERY_SAFE_MODE: "false"     # 禁用安全模式加速
+# - AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Shanghai      # 时区设置 (可选)
+# - AIRFLOW__CORE__EXECUTOR: CeleryExecutor             # 队列处理任务 (支持分布式集群)
+# - AIRFLOW__CORE__EXECUTOR: LocalExecutor              # 并行处理任务 (要求所有组件使用同一个数据库连接)
+# - AIRFLOW__CORE__EXECUTOR: SequentialExecutor         # 序列处理任务
+# - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/db/airflow.db  # SQLite 数据库连接 (SQLite 可能不支持多进程访问)
+# - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:abcd1234@192.168.1.1:5432/airflow  # PostgreSQL 数据库连接
+# - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://airflow:abcd1234@192.168.1.1:3306/airflow  # MySQL 数据库连接
+# - AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "60"     # 60 秒扫描一次 (默认 300 秒)
+# - AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "0"  # 立即处理新文件
+# - AIRFLOW__SCHEDULER__PARSING_PROCESSES: "4"          # 增加解析进程数
+# - AIRFLOW__SCHEDULER__MAX_DAGRUNS_PER_LOOP: "10"      # 每次循环处理更多 DAG 运行
+# - AIRFLOW__SCHEDULER__MAX_DAGFILE_PROCESSES: "8"      # 最大DAG文件处理进程
+# - AIRFLOW__SCHEDULER__DAGBAG_IMPORT_TIMEOUT: "120"    # 增加导入超时时间
+# - AIRFLOW_USERNAME: 'admin'
+# - AIRFLOW_EMAIL: 'admin@mail.com'
+#
+# Airflow 3.0.2 环境变量 (适用于 FabAuthManager 认证管理器):
+# - _AIRFLOW_WWW_USER_CREATE: 'true'  # airflow users create 命令仅用于 FabAuthManager 认证管理器, 否则 CLI 用户管理命令会被跳过
+# - _AIRFLOW_WWW_USER_USERNAME: 'admin'
+# - _AIRFLOW_WWW_USER_PASSWORD: 'abcd1234'
+# - _AIRFLOW_WWW_USER_FIRSTNAME: 'Admin'
+# - _AIRFLOW_WWW_USER_LASTNAME: 'User'
+# - _AIRFLOW_WWW_USER_EMAIL: 'admin@mail.com'
+# - _AIRFLOW_WWW_USER_ROLE: 'Admin'
+#
+# Airflow 3.0.2 环境变量 (适用于 Celery):
+# - AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://192.168.1.1:8080/execution'
+# - AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:abcd1234@192.168.1.1:5432/airflow
+# - AIRFLOW__CELERY__BROKER_URL: redis://:@192.168.1.1:6379/0
+# - AIRFLOW__CELERY__RESULT_BACKEND: db+mysql://airflow:abcd1234@192.168.1.1:3306/airflow
+#
+# 简单示例 DAG 文件 /opt/airflow/dags/example_dag.py
+#
+# from airflow import DAG
+# from airflow.operators.bash import BashOperator
+# from datetime import datetime, timedelta
+# 
+# default_args = {
+#     'owner': 'airflow',
+#     'depends_on_past': False,
+#     'email_on_failure': False,
+#     'email_on_retry': False,
+#     'retries': 1,
+#     'retry_delay': timedelta(minutes=5),
+# }
+# 
+# with DAG(
+#     'example_dag',
+#     default_args = default_args,
+#     description = 'A simple example DAG',
+#     schedule = timedelta(days = 1),  # Airflow 2.3.0 及之前, 使用 schedule_interval
+#     start_date = datetime(2023, 1, 1),
+#     catchup = False,
+# ) as dag:
+# 
+#     t1 = BashOperator(
+#         task_id='print_date',
+#         bash_command='date',
+#     )
+# 
+#     t2 = BashOperator(
+#         task_id='sleep',
+#         bash_command='sleep 5',
+#     )
+# 
+#     t1 >> t2
+#
+# 这个示例 DAG 文件包含两个任务: 打印当前日期和等待 5 秒
+
+# Signed by GF.

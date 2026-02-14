@@ -1,0 +1,57 @@
+# docker-compose-nocodb-0.262.5
+
+services:
+
+  mysql:
+    image: mysql:8.0.18
+    container_name: mysql
+    ports:
+      - '3306:3306'
+    restart: always
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.201
+    environment:
+      - MYSQL_DATABASE=nocodb
+      - MYSQL_USER=nocodb
+      - MYSQL_PASSWORD=abcd1234
+      - MYSQL_ROOT_PASSWORD=abcd1234
+#     - MYSQL_ROOT_HOST=%
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./mysql:/var/lib/mysql
+#   privileged: true  # 基于 Windows WSL 的 docker-desktop 需要开启
+
+  nocodb:
+    image: nocodb/nocodb:0.262.5
+    container_name: nocodb
+    ports:
+      - '2380:8080'
+    restart: always
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.204
+    environment:
+      - NC_DB=mysql2://192.168.1.1:3306?u=nocodb&p=abcd1234&d=nocodb
+#     - NC_DB=pg://192.168.1.1:5432?u=nocodb&p=password&d=nocodb
+#     - NC_DB=sqlite:///data/nocodb.sqlite
+      - NC_AUTH_JWT_SECRET=aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789AbCdEfGhj
+    volumes:
+      - ./nocodb/data:/usr/app/data
+#   privileged: true  # 基于 Windows WSL 的 docker-desktop 需要开启
+
+networks:
+  custom-net:
+    external: true    # Use an existing external network.
+    name: custom-net  # The name of the external network.
+
+# Create Container Network
+# - docker network create --subnet=192.168.1.0/24 --gateway=192.168.1.1 custom-net
+# Create MySQL 8 Database:
+# - CREATE DATABASE IF NOT EXISTS nocodb DEFAULT charset utf8 COLLATE utf8_general_ci;
+# Create MySQL 8 User:
+# - CREATE USER IF NOT EXISTS 'nocodb'@'%' IDENTIFIED WITH mysql_native_password BY 'abcd1234';
+# Grant in MySQL 8:
+# - GRANT ALL PRIVILEGES ON nocodb.* TO 'nocodb'@'%' WITH GRANT OPTION;
+
+# Signed by GF.

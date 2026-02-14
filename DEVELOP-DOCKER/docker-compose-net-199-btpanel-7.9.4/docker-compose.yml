@@ -1,0 +1,52 @@
+# docker-compose-net-199-btpanel-7.9.4
+
+services:
+
+  btpanel:
+    # 宝塔面板国内官方镜像: docker.cnb.cool/btpanel/btpanel:latest
+    # 宝塔面板 DockerHub 镜像: btpanel/baota:latest
+    image: btpanel/baota:7.9.4-lnmp
+    container_name: btpanel
+    ports:
+      - "38888:8888"  # 宝塔面板对外访问端口, 默认 38888
+      - "8080:80"     # Web 服务端口, 默认 8080
+      - "8443:443"    # HTTPS 服务端口, 默认 8443
+      - "33306:3306"  # MySQL 服务端口, 默认 33306
+      - "22022:22"    # SSH 服务端口, 默认 22022
+      - "32888:888"   # PHPMyAdmin 服务端口, 默认 32888
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.199
+    restart: always
+#   deploy:
+#     resource:
+#       limits:
+#         cpus: "2.0"      # 最大 CPU 核心限制 (根据实际情况调整)
+#         memory: "1024M"  # 最大内存限制 (根据实际情况调整)
+#     restart_policy:
+#       condition: always
+    volumes:
+      - "./www/wwwroot:/www/wwwroot"          # 持久化存储宝塔面板网站数据, 默认 /www/wwwroot
+      - "./www/data:/www/server/data"         # 持久化存储 MySQL 数据, 默认 /www/data
+      - "./www/vhost:/www/server/panel/vhost" # Nginx 配置文件目录
+#     - "/usr/bin/docker:/usr/bin/docker"     # 本地 docker 环境挂载进面板 docker 使用
+#     - "/run/docker.sock:/run/docker.sock"   # 本地 docker 环境挂载进面板 docker 使用
+    labels:
+      createdBy: "bt_apps"
+
+networks:
+  custom-net:
+    external: true    # Use an existing external network.
+    name: custom-net  # The name of the external network.
+
+# BTPanel 7.9.4 使用说明:
+# 容器部署默认用户: btpanel
+# 容器部署默认密码: btpaneldocker
+# 默认安全入口路径: /btpanel
+# 查看外网面板地址: docker exec btpanel /etc/init.d/bt default
+# 查看初始用户信息: docker exec btpanel /etc/init.d/bt default
+# 查看初始用户密码: docker exec btpanel /etc/init.d/bt default (默认弃用, 使用容器部署默认密码)
+# 查看安全入口路径: docker exec btpanel cat /www/server/panel/data/admin_path.pl
+# 使用安全入口路径: http://Your-IP:38888/安全入口
+
+# Signed by GF.

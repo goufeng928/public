@@ -1,0 +1,74 @@
+# docker-compose-net-180-seafile-mc-11.0.12
+
+services:
+
+  memcached:
+    image: memcached:1.6.18
+    container_name: seafile-memcached
+    entrypoint: memcached -m 256
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.179
+
+  seafile:
+    image: seafileltd/seafile-mc:11.0.12
+    container_name: seafile
+    ports:
+      - "8180:80"
+#     - "80:80"
+#     - "443:443"                             # If https is enabled, cancel the comment.
+    volumes:
+      - ./seafile/data:/shared                # Requested, specifies the path to Seafile data persistent store.
+    environment:
+      - DB_HOST=192.168.1.1
+      - DB_ROOT_PASSWD=abcd1234               # Requested, the value shuold be root's password of MySQL service.
+#     - SEAFILE_DB_USER=seafile
+#     - SEAFILE_DB_PASSWORD=abcd1234
+#     - SEAFILE_DB_NAME=seafile_db
+#     - CCNET_DB_NAME=ccnet_db
+#     - SEAHUB_DB_NAME=seahub_db
+      - TIME_ZONE=Asia/Shanghai               # Optional, default is UTC. Should be uncomment and set to your local time zone.
+      - SEAFILE_ADMIN_EMAIL=admin@mail.com    # Specifies Seafile admin user, default is 'me@example.com'.
+      - SEAFILE_ADMIN_PASSWORD=abcd1234       # Specifies Seafile admin password, default is 'asecret'.
+      - SEAFILE_SERVER_LETSENCRYPT=false      # Whether use letsencrypt to generate cert.
+#     - SEAFILE_SERVER_HOSTNAME=127.0.0.1:80  # Specifies your host name.
+      - SEAFILE_SERVER_HOSTNAME=127.0.0.1:8180
+    depends_on:
+      - memcached
+    networks:
+      custom-net:
+        ipv4_address: 192.168.1.180
+#   privileged: true                          # 基于 Windows WSL 的 docker-desktop 需要开启 (Error happened during creating seafile admin)
+
+networks:
+  custom-net:
+    external: true    # Use an existing external network.
+    name: custom-net  # The name of the external network.
+
+# Docker Container Network Creation:
+# - docker network create --subnet=192.168.1.0/24 --gateway=192.168.1.1 custom-net
+#
+# MySQL 8 Corresponding Operations:
+# - GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;            -- IF EXISTS
+# - GRANT ALL PRIVILEGES ON *.* TO 'root'@'192.168.1.%' WITH GRANT OPTION;  -- IF EXISTS
+# - DROP USER 'seafile'@'%.%.%.%';
+# - DROP DATABASE ccnet_db;
+# - DROP DATABASE seafile_db;
+# - DROP DATABASE seahub_db;
+#
+# Seafile Requirements: MariaDB 10 / MySQL 5.7 (Not Supporting "caching_sha2_password" of MySQL 8)
+#
+# Integration ONLYOFFICE DocumentServer
+# Edit: /shared/seafile/conf/seahub_settings.py
+# Append the following content:
+#
+# # Enable Only Office
+# ENABLE_ONLYOFFICE = True
+# VERIFY_ONLYOFFICE_CERTIFICATE = False
+# # ONLYOFFICE_APIJS_URL = 'http{s}://{your OnlyOffice server's domain or IP}/web-apps/apps/api/documents/api.js'
+# ONLYOFFICE_APIJS_URL = 'http://documentserver:6233/web-apps/apps/api/documents/api.js'
+# ONLYOFFICE_FILE_EXTENSION = ('doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'odt', 'fodt', 'odp', 'fodp', 'ods', 'fods')
+# ONLYOFFICE_EDIT_FILE_EXTENSION = ('doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'odt', 'fodt', 'odp', 'fodp', 'ods', 'fods')
+# ONLYOFFICE_JWT_SECRET = "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789AbCdEfGhj"
+
+# Signed by GF.
